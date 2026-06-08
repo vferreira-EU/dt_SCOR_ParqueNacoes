@@ -292,7 +292,8 @@ code{background:#0a1a2a;color:#9FE1CB;padding:1px 3px;border-radius:2px;font-siz
       <div class="li"><div class="lc" style="background:#9FE1CB;width:5px;height:10px;border-radius:3px"></div>Pessoa residente</div>
       <div class="li"><div class="lc" style="background:#EF9F27;width:5px;height:10px;border-radius:3px"></div>Pessoa visitante</div>
       <div class="li"><div class="lc" style="background:#5DCAA5;width:12px;height:5px;border-radius:1px"></div>Carro fluido</div>
-      <div class="li"><div class="lc" style="background:#FAC775;width:7px;height:12px;border-radius:1px"></div>Autocarro Carris</div>
+      <div class="li"><div class="lc" style="background:#1D9E75;width:8px;height:8px;border-radius:50%"></div>Carris ida (dir. 0)</div>
+      <div class="li"><div class="lc" style="background:#F08080;width:8px;height:8px;border-radius:50%"></div>Carris regresso (dir. 1)</div>
       <div class="li"><div class="lc" style="background:#5DCAA5"></div>Via fluida (&gt;60)</div>
       <div class="li"><div class="lc" style="background:#EF9F27"></div>Via pesada (30–60)</div>
       <div class="li"><div class="lc" style="background:#E24B4A"></div>Via congestionada</div>
@@ -361,12 +362,17 @@ function buildCars(t,selVia,simSpd){
   ROADS.forEach((road,ri)=>{
     const n=Math.floor(road.lanes*2.5);
     for(let i=0;i<n;i++){
-      const prog=((i/n)+t*0.35+ri*0.09)%1;
+      // Metade dos carros em cada sentido
+      const reverse=i%2===1;
+      const base=reverse?(1-((i/n)+t*0.35+ri*0.09)%1):((i/n)+t*0.35+ri*0.09)%1;
+      const prog=Math.max(0,Math.min(0.999,base));
       const c=road.coords;
       const si=Math.min(Math.floor(prog*(c.length-1)),c.length-2);
       const st=prog*(c.length-1)-si;
       const p0=c[si],p1=c[si+1];
-      const dx=p1[0]-p0[0],dy=p1[1]-p0[1];
+      // Sentido invertido = ângulo oposto
+      const dx=reverse?(p0[0]-p1[0]):(p1[0]-p0[0]);
+      const dy=reverse?(p0[1]-p1[1]):(p1[1]-p0[1]);
       const isCong=road.id===selVia&&simSpd<30;
       cars.push({position:[p0[0]+(p1[0]-p0[0])*st,p0[1]+(p1[1]-p0[1])*st],
         angle:-(Math.atan2(dy,dx)*180/Math.PI),isCong,roadName:road.name,
@@ -378,20 +384,25 @@ function buildCars(t,selVia,simSpd){
 
 // ── AUTOCARROS SINTÉTICOS ────────────────────────────────────
 function buildSynthBuses(t){
-  const busRoutes=[ROADS[17],ROADS[18],ROADS[19],ROADS[4]]; // Dom João II, Boa Esp, Infante, Gomes Costa
-  const lines=['26B','208','705','728'];
+  const SROUTES=[
+    {coords:[[-9.102,38.757],[-9.099,38.765],[-9.097,38.773],[-9.095,38.781],[-9.092,38.793],[-9.091,38.797]],line:'705',direction:0},
+    {coords:[[-9.091,38.777],[-9.093,38.769],[-9.095,38.762],[-9.096,38.759]],line:'708',direction:1},
+    {coords:[[-9.145,38.762],[-9.125,38.762],[-9.107,38.763],[-9.099,38.768],[-9.095,38.778],[-9.091,38.787]],line:'26B',direction:0},
+    {coords:[[-9.145,38.770],[-9.126,38.769],[-9.107,38.769],[-9.092,38.771]],line:'728',direction:0},
+    {coords:[[-9.092,38.771],[-9.107,38.769],[-9.126,38.769],[-9.145,38.770]],line:'759',direction:1},
+  ];
   const buses=[];
-  busRoutes.filter(r=>r).forEach((road,ri)=>{
+  SROUTES.forEach((route,ri)=>{
     for(let b=0;b<3;b++){
       const prog=((b/3)+ri*0.18+t*0.18)%1;
-      const c=road.coords;
+      const c=route.coords;
       const si=Math.min(Math.floor(prog*(c.length-1)),c.length-2);
       const st=prog*(c.length-1)-si;
       const p0=c[si],p1=c[si+1];
       const dx=p1[0]-p0[0],dy=p1[1]-p0[1];
       buses.push({position:[p0[0]+(p1[0]-p0[0])*st,p0[1]+(p1[1]-p0[1])*st],
         angle:-(Math.atan2(dy,dx)*180/Math.PI),
-        line:lines[ri],busId:'Linha '+lines[ri],isLive:false,icon:'bus'});
+        line:route.line,direction:route.direction,isLive:false,icon:'bus'});
     }
   });
   return buses;
@@ -446,9 +457,10 @@ const deckgl=new DeckGL({
     let h='<div style="background:#0b1d38;border:1px solid #1D9E75;padding:6px 9px;border-radius:4px;font-size:9px;color:#dce8f0;max-width:200px">';
     if(object.C1!==undefined)
       h+='<b style="color:#9FE1CB">'+object.nome+'</b><br>C1: <b>'+Math.round(object.C1||0).toLocaleString('pt')+'</b> &nbsp; C2: <b style="color:#EF9F27">'+Math.round(object.C2||0).toLocaleString('pt')+'</b><br>C5: <b style="color:#5DCAA5">'+Math.round(object.C5||0).toLocaleString('pt')+'</b> &nbsp; C6: <b style="color:#F0997B">'+Math.round(object.C6||0).toLocaleString('pt')+'</b>';
-    else if(object.icon==='bus')
-      // Tooltip do autocarro com número da linha e ID
-      h+='<b style="color:#FAC775">&#128652; Autocarro</b><br>Linha: <b style="color:#FAC775">'+object.line+'</b>'+(object.busId&&object.busId!==object.line?'<br>ID: <b>'+object.busId+'</b>':'')+(object.isLive?'<br><span style="color:#1D9E75">● Live</span>':'<br><span style="color:#888">Sintético</span>');
+    else if(object.icon==='bus'||object.line!==undefined){
+      const dIcon=(object.direction||0)===1?'<span style="color:#F08080">&#8595; Regresso</span>':'<span style="color:#1D9E75">&#8593; Ida</span>';
+      h+='<b style="color:#FAC775">&#128652; Carris</b><br>N.&ordm; <b style="color:#FAC775;font-size:13px">'+object.line+'</b><br>'+dIcon+(object.isLive?' <span style="color:#1D9E75;font-size:8px">&#9679; live</span>':'<span style="color:#888;font-size:8px"> sínt.</span>');
+      h+='</div>'; return {html:h,style:{padding:'0'}};}
     else if(object.icon&&object.icon.startsWith('person'))
       h+='<b style="color:'+(object.isRoam?'#EF9F27':'#9FE1CB')+'">'+(object.isRoam?'Visitante (roaming)':'Residente/trabalhador')+'</b>'+(object.nome?'<br><span style="color:#5DCAA5">'+object.nome+'</span>':'');
     else if(object.icon&&object.icon.startsWith('car'))
@@ -510,10 +522,11 @@ async function fetchAll(){
       else{lon=parseFloat(p.longitude||p.lon||0);lat=parseFloat(p.latitude||p.lat||0);}
       if(!lon||!lat||!inBus(lon,lat))return;
       // Extrair número do autocarro / linha
-      const line=String(p.route_id||p.linha||p.line_id||p.route||'?').toUpperCase().trim();
+      const rn=p['route-number']||p['route_number']||p.route_number||p.route_id||p.routeId||p.linha||p.line_id||p.route||p.lineName||'?'; const line=String(rn).toUpperCase().replace(/^0+/,'').trim();
       const busId=String(p.vehicle_id||p.bus_id||p.id||p.entity_id||line);
+      const direction=parseInt(p.direction||p.direction_id||p.trip_direction||0);
       liveBuses.push({position:[lon,lat],angle:-(parseFloat(p.bearing||p.heading||0)),
-        line,busId,isLive:true,icon:'bus'});
+        line,direction,isLive:true,icon:'bus'});
     });
 
     simGrids=JSON.parse(JSON.stringify(liveGrids));
@@ -618,12 +631,33 @@ function renderLayers(gridsOvr,animT){
     const cars=buildCars(t,selVia,simSpd);
     const buses=liveBuses.length>0?liveBuses:buildSynthBuses(t);
     document.getElementById('kpi-bus').textContent=liveBuses.length>0?buses.length+'●':buses.length+'~';
-    const allIcons=[...persons,...cars,...buses];
-    if(allIcons.length>0)
-      layers.push(new IconLayer({id:'icons',data:allIcons,
+  // ── AUTOCARROS — halo de cor (ida=verde, regresso=rosa) por baixo do ícone SVG ──
+  (function(){
+    const busData = liveBuses.length > 0 ? liveBuses : buildSynthBuses(t||0);
+    document.getElementById('kpi-bus').textContent =
+      liveBuses.length > 0 ? busData.length + '●' : busData.length + '~';
+    if(!busData || busData.length === 0) return;
+    // Halo colorido por direcção — renderizado ANTES do IconLayer para ficar por baixo
+    layers.push(new ScatterplotLayer({
+      id: 'bus-halo',
+      data: busData,
+      getPosition: d => d.position,
+      getRadius: 18,
+      getFillColor: d => (d.direction||0)===1 ? [240,128,128,60] : [29,158,117,60],
+      radiusUnits: 'pixels',
+      pickable: false,
+    }));
+  })();
+
+    // Pessoas + carros + buses no IconLayer (atlas tem todos os SVGs)
+    const allIcons=[...persons,...cars];
+    const busForIcon = liveBuses.length>0 ? liveBuses : buildSynthBuses(t||0);
+    const allIconsWithBus = [...allIcons, ...busForIcon];
+    if(allIconsWithBus.length>0 && iconAtlasUrl)
+      layers.push(new IconLayer({id:'icons',data:allIconsWithBus,
         iconAtlas:iconAtlasUrl,iconMapping:ICON_MAPPING,
         getIcon:d=>d.icon||'person',getPosition:d=>d.position,
-        getSize:d=>d.icon==='bus'?26:d.icon.startsWith('car')?16:18,
+        getSize:d=>d.icon==='bus'?28:d.icon.startsWith('car')?16:18,
         getAngle:d=>d.angle||0,sizeUnits:'pixels',pickable:true,billboard:false}));
   }
 
@@ -633,8 +667,7 @@ function renderLayers(gridsOvr,animT){
     getPosition:d=>d.position,getRadius:8,
     getFillColor:d=>d.type==='ACCIDENT'?[226,75,74,255]:d.type==='HAZARD'?[239,159,39,255]:[226,75,74,200],
     radiusUnits:'pixels',pickable:true}));
-
-  deckgl.setProps({layers});
+    deckgl.setProps({layers});
   updateKPIs(grids);
 }
 
